@@ -154,3 +154,13 @@ def assert_user_details() -> UserDetailsAssertion:
 def invalid_email(request) -> str:
     """Invalid email."""
     return request.param
+
+
+@pytest.fixture()
+def saved_user(
+    user_register_details: UserRegisterDetails,
+) -> User:
+    """Saved user."""
+    password = user_register_details.pop('password1')
+    user_register_details.pop('password2')
+    return User.objects.create_user(password=password, **user_register_details)
