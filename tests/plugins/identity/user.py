@@ -32,6 +32,19 @@ class UserRegisterDetails(UserDetails, total=False):
 
 
 @final
+class UserModel(UserDetails, total=False):
+    """User model data."""
+
+    lead_id: int
+
+
+@pytest.fixture()
+def mf(faker_seed: int) -> Field:
+    """Returns the current mimesis `Field`."""
+    return Field(seed=faker_seed, locale=Locale.RU)
+
+
+@final
 class UserDetailsFactory(Protocol):  # type: ignore[misc]
     """A factory to generate `UserDetails`."""
 
@@ -53,15 +66,25 @@ class UserRegisterDetailsFactory(Protocol):  # type: ignore[misc]
         """User registration details factory protocol."""
 
 
+@final
+class UserModelFactory(Protocol):  # type: ignore[misc]
+    """A factory to generate `UserModel`."""
+
+    def __call__(
+        self,
+        **fields: Unpack[UserModel],
+    ) -> UserModel:
+        """User model factory protocol."""
+
+
 @pytest.fixture()
 def user_details_factory(
-    faker_seed: int,
+    mf: Field,
 ) -> UserDetailsFactory:
     """User profile details factory."""
     def factory(
         **fields: Unpack[UserDetails],
     ) -> UserDetails:
-        mf = Field(locale=Locale.RU, seed=faker_seed)
         schema = Schema(schema=lambda: {
             'first_name': mf('person.first_name'),
             'last_name': mf('person.last_name'),
@@ -91,13 +114,12 @@ def user_details(
 @pytest.fixture()
 def user_register_details_factory(
     user_details: UserDetails,
-    faker_seed: int,
+    mf: Field,
 ) -> UserRegisterDetailsFactory:
     """User registration details factory."""
     def factory(
         **fields: Unpack[UserRegisterDetails],
     ) -> UserRegisterDetails:
-        mf = Field(locale=Locale.RU, seed=faker_seed)
         password = mf('password')
         email = mf('person.email')
         return {
@@ -118,6 +140,34 @@ def user_register_details(
 ) -> UserRegisterDetails:
     """User registration details."""
     return user_register_details_factory()
+
+
+@pytest.fixture()
+def user_model_factory(
+    user_details: UserDetails,
+    mf: Field,
+) -> UserModelFactory:
+    """User model factory."""
+    def factory(
+        **fields: Unpack[UserModel],
+    ) -> UserModel:
+        return {
+            **user_details,  # type: ignore[misc]
+            **{
+                'lead_id': mf('random.randint'),
+                'email': mf('person.email'),
+            },
+            **fields,
+        }
+    return factory
+
+
+@pytest.fixture()
+def user_model(
+    user_model_factory: UserModelFactory,
+) -> UserModel:
+    """User model."""
+    return user_model_factory()
 
 
 UserDetailsAssertion: TypeAlias = Callable[[str, UserDetails], None]
@@ -154,6 +204,12 @@ def assert_user_details() -> UserDetailsAssertion:
 def invalid_email(request) -> str:
     """Invalid email."""
     return request.param
+
+
+@pytest.fixture
+def lead_id(mf) -> int:
+    """Lead ID."""
+    return mf('random.randint')
 
 
 @pytest.fixture()
