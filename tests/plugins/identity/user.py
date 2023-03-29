@@ -14,6 +14,7 @@ BIRTH_DATE_FORMAT = '%Y-%m-%d'  # noqa: WPS323
 class UserDetails(TypedDict, total=False):
     """User details data."""
 
+    email: str
     first_name: str
     last_name: str
     date_of_birth: str
@@ -26,7 +27,6 @@ class UserDetails(TypedDict, total=False):
 class UserRegisterDetails(UserDetails, total=False):
     """User registration details data."""
 
-    email: str
     password1: str
     password2: str
 
@@ -36,6 +36,7 @@ class UserModel(UserDetails, total=False):
     """User model data."""
 
     lead_id: int
+    password: str
 
 
 @pytest.fixture()
@@ -95,6 +96,7 @@ def user_details_factory(
             'address': mf('address.address'),
             'job_title': mf('person.occupation'),
             'phone': mf('person.telephone'),
+            'email': mf('person.email'),
         })
         return {
             **schema.create(iterations=1)[0],  # type: ignore[misc]
@@ -121,11 +123,9 @@ def user_register_details_factory(
         **fields: Unpack[UserRegisterDetails],
     ) -> UserRegisterDetails:
         password = mf('password')
-        email = mf('person.email')
         return {
             **user_details,  # type: ignore[misc]
             **{
-                'email': email,
                 'password1': password,
                 'password2': password,
             },
@@ -145,6 +145,7 @@ def user_register_details(
 @pytest.fixture()
 def user_model_factory(
     user_details: UserDetails,
+    lead_id: int,
     mf: Field,
 ) -> UserModelFactory:
     """User model factory."""
@@ -154,8 +155,8 @@ def user_model_factory(
         return {
             **user_details,  # type: ignore[misc]
             **{
-                'lead_id': mf('random.randint'),
-                'email': mf('person.email'),
+                'lead_id': lead_id,
+                'password': mf('password'),
             },
             **fields,
         }
@@ -188,7 +189,8 @@ def assert_user_details() -> UserDetailsAssertion:
         assert user.date_of_birth.isoformat() == expected.pop('date_of_birth')
         # All other fields:
         for field_name, data_value in expected.items():
-            assert getattr(user, field_name) == data_value
+            if not field_name.startswith('password'):
+                assert getattr(user, field_name) == data_value
     return factory
 
 
@@ -206,17 +208,15 @@ def invalid_email(request) -> str:
     return request.param
 
 
-@pytest.fixture
-def lead_id(mf) -> int:
+@pytest.fixture()
+def lead_id(mf: Field) -> int:
     """Lead ID."""
-    return mf('random.randint')
+    return mf('random.randint', a=1, b=1000)
 
 
 @pytest.fixture()
 def saved_user(
-    user_register_details: UserRegisterDetails,
+    user_model: UserModel,
 ) -> User:
     """Saved user."""
-    password = user_register_details.pop('password1')
-    user_register_details.pop('password2')
-    return User.objects.create_user(password=password, **user_register_details)
+    return User.objects.create_user(**user_model)
