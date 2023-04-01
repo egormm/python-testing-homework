@@ -14,6 +14,7 @@ BIRTH_DATE_FORMAT = '%Y-%m-%d'  # noqa: WPS323
 class UserDetails(TypedDict, total=False):
     """User details data."""
 
+    email: str
     first_name: str
     last_name: str
     date_of_birth: str
@@ -26,9 +27,22 @@ class UserDetails(TypedDict, total=False):
 class UserRegisterDetails(UserDetails, total=False):
     """User registration details data."""
 
-    email: str
     password1: str
     password2: str
+
+
+@final
+class UserModel(UserDetails, total=False):
+    """User model data."""
+
+    lead_id: int
+    password: str
+
+
+@pytest.fixture()
+def mf(faker_seed: int) -> Field:
+    """Returns the current mimesis `Field`."""
+    return Field(seed=faker_seed, locale=Locale.RU)
 
 
 @final
@@ -53,15 +67,25 @@ class UserRegisterDetailsFactory(Protocol):  # type: ignore[misc]
         """User registration details factory protocol."""
 
 
+@final
+class UserModelFactory(Protocol):  # type: ignore[misc]
+    """A factory to generate `UserModel`."""
+
+    def __call__(
+        self,
+        **fields: Unpack[UserModel],
+    ) -> UserModel:
+        """User model factory protocol."""
+
+
 @pytest.fixture()
 def user_details_factory(
-    faker_seed: int,
+    mf: Field,
 ) -> UserDetailsFactory:
     """User profile details factory."""
     def factory(
         **fields: Unpack[UserDetails],
     ) -> UserDetails:
-        mf = Field(locale=Locale.RU, seed=faker_seed)
         schema = Schema(schema=lambda: {
             'first_name': mf('person.first_name'),
             'last_name': mf('person.last_name'),
@@ -72,6 +96,7 @@ def user_details_factory(
             'address': mf('address.address'),
             'job_title': mf('person.occupation'),
             'phone': mf('person.telephone'),
+            'email': mf('person.email'),
         })
         return {
             **schema.create(iterations=1)[0],  # type: ignore[misc]
@@ -91,19 +116,16 @@ def user_details(
 @pytest.fixture()
 def user_register_details_factory(
     user_details: UserDetails,
-    faker_seed: int,
+    mf: Field,
 ) -> UserRegisterDetailsFactory:
     """User registration details factory."""
     def factory(
         **fields: Unpack[UserRegisterDetails],
     ) -> UserRegisterDetails:
-        mf = Field(locale=Locale.RU, seed=faker_seed)
         password = mf('password')
-        email = mf('person.email')
         return {
             **user_details,  # type: ignore[misc]
             **{
-                'email': email,
                 'password1': password,
                 'password2': password,
             },
@@ -118,6 +140,35 @@ def user_register_details(
 ) -> UserRegisterDetails:
     """User registration details."""
     return user_register_details_factory()
+
+
+@pytest.fixture()
+def user_model_factory(
+    user_details: UserDetails,
+    lead_id: int,
+    mf: Field,
+) -> UserModelFactory:
+    """User model factory."""
+    def factory(
+        **fields: Unpack[UserModel],
+    ) -> UserModel:
+        return {
+            **user_details,  # type: ignore[misc]
+            **{
+                'lead_id': lead_id,
+                'password': mf('password'),
+            },
+            **fields,
+        }
+    return factory
+
+
+@pytest.fixture()
+def user_model(
+    user_model_factory: UserModelFactory,
+) -> UserModel:
+    """User model."""
+    return user_model_factory()
 
 
 UserDetailsAssertion: TypeAlias = Callable[[str, UserDetails], None]
@@ -138,7 +189,8 @@ def assert_user_details() -> UserDetailsAssertion:
         assert user.date_of_birth.isoformat() == expected.pop('date_of_birth')
         # All other fields:
         for field_name, data_value in expected.items():
-            assert getattr(user, field_name) == data_value
+            if not field_name.startswith('password'):
+                assert getattr(user, field_name) == data_value
     return factory
 
 
@@ -154,3 +206,17 @@ def assert_user_details() -> UserDetailsAssertion:
 def invalid_email(request) -> str:
     """Invalid email."""
     return request.param
+
+
+@pytest.fixture()
+def lead_id(mf: Field) -> int:
+    """Lead ID."""
+    return mf('random.randint', a=1, b=1000)
+
+
+@pytest.fixture()
+def saved_user(
+    user_model: UserModel,
+) -> User:
+    """Saved user."""
+    return User.objects.create_user(**user_model)
